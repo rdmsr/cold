@@ -29,7 +29,8 @@ pub fn statically_link_files(input_files: Vec<String>, output: String) -> Result
             }
 
             if sym.global {
-                symbols_map.insert(sym.name.clone(), sym.clone());
+                let cloned_sym = sym.clone();
+                symbols_map.insert(cloned_sym.name.clone(), cloned_sym);
             }
         });
 

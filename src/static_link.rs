@@ -15,18 +15,16 @@ pub fn statically_link_files(input_files: Vec<String>, _output: String) -> Resul
                 let ctx = &context.write().unwrap();
                 let cloned_sym = sym.clone();
 
-                let existing_symbol = ctx.symbols.get(&sym.name);
-
                 if sym.defined {
-                    if let Some(existing_sym) = existing_symbol {
+                    if let Some(existing_sym) = ctx.symbols.get(&sym.name) {
                         // If there is already a defined symbol with the same name that is strong
                         if existing_sym.strong && existing_sym.defined {
                             log::error!("Multiple definitions of symbol `{}`", existing_sym.name);
                         }
                     }
-                }
 
-                ctx.symbols.insert(cloned_sym.name.clone(), cloned_sym);
+                    ctx.symbols.insert(cloned_sym.name.clone(), cloned_sym);
+                }
             }
         });
 
@@ -41,6 +39,8 @@ pub fn statically_link_files(input_files: Vec<String>, _output: String) -> Resul
         if !sym.defined {
             log::error!("Undefined symbol `{}`", sym.name);
         }
+
+        log::info!("{:?}", *sym);
     }
 
     Ok(())

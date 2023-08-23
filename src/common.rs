@@ -1,6 +1,6 @@
 use crate::error::LinkerError;
 use dashmap::DashMap;
-use object::{Object, ObjectKind, ObjectSection, ObjectSymbol};
+use object::{Object, ObjectSection, ObjectSymbol};
 
 #[derive(Debug, Clone)]
 pub struct Symbol {
@@ -46,12 +46,9 @@ pub fn load_object_file(path: &str, context: &mut Context) -> Result<ObjectFile,
 
     let mmap = unsafe { memmap2::Mmap::map(&file).unwrap() };
 
-    let obj = object::File::parse(mmap.as_ref())
-        .map_err(|e| LinkerError::ParseError(path.to_string(), e))?;
-
     context.mmaps.push(mmap);
 
-    let obj = object::File::parse(&*context.mmaps.last().unwrap().as_ref())
+    let obj = object::File::parse(context.mmaps.last().unwrap().as_ref())
         .map_err(|e| LinkerError::ParseError(path.to_string(), e))?;
 
     if obj.kind() != object::ObjectKind::Relocatable {

@@ -10,9 +10,12 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-pub fn statically_link_files(input_files: Vec<String>, output: String) -> Result<(), LinkerError> {
-    let out_file = BufWriter::new(File::create(output).unwrap());
-    let mut writer = write::StreamingBuffer::new(out_file);
+pub fn statically_link_files(input_files: Vec<String>, output: &str) -> Result<(), LinkerError> {
+    let mut writer = {
+        let out_file = BufWriter::new(File::create(output).unwrap());
+        write::StreamingBuffer::new(out_file)
+    };
+
     let mut _elf_writer = elf::Writer::new(object::Endianness::Little, true, &mut writer);
 
     let symbols_map: DashMap<String, common::Symbol> = DashMap::new();

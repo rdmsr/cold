@@ -1,4 +1,3 @@
-#[macro_use]
-pub mod error;
 mod common;
+pub mod error;
 pub mod static_link;

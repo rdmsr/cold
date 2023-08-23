@@ -40,7 +40,7 @@ fn main() {
     );
 
     if args._static {
-        if let Err(err) = statically_link_files(args.files, &args.output) {
+        if let Err(err) = statically_link_files(args.files, args.output) {
             err.report();
         }
     } else {

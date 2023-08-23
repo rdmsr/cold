@@ -1,4 +1,5 @@
 use crate::error::LinkerError;
+use dashmap::DashMap;
 use object::{Object, ObjectKind, ObjectSection, ObjectSymbol};
 
 #[derive(Debug, Clone)]
@@ -9,6 +10,7 @@ pub struct Symbol {
     pub kind: object::SymbolKind,
     pub defined: bool,
     pub global: bool,
+    pub strong: bool,
 }
 
 #[derive(Debug)]
@@ -19,9 +21,10 @@ pub struct Relocation {
     pub encoding: object::RelocationEncoding,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Section {
     pub name: String,
+    pub data: Vec<u8>,
 }
 
 #[derive(Debug, Default)]
@@ -31,14 +34,27 @@ pub struct ObjectFile {
     pub sections: Vec<Section>,
 }
 
-pub fn load_object_file(path: &str) -> Result<ObjectFile, LinkerError> {
+#[derive(Debug, Default)]
+pub struct Context {
+    pub mmaps: Vec<memmap2::Mmap>,
+    pub symbols: DashMap<String, Symbol>,
+    pub sections: Vec<Section>,
+}
+
+pub fn load_object_file(path: &str, context: &mut Context) -> Result<ObjectFile, LinkerError> {
     let file = std::fs::File::open(path).map_err(|e| LinkerError::IOError(path.to_string(), e))?;
+
     let mmap = unsafe { memmap2::Mmap::map(&file).unwrap() };
 
     let obj = object::File::parse(mmap.as_ref())
         .map_err(|e| LinkerError::ParseError(path.to_string(), e))?;
 
-    if obj.kind() != ObjectKind::Relocatable {
+    context.mmaps.push(mmap);
+
+    let obj = object::File::parse(&*context.mmaps.last().unwrap().as_ref())
+        .map_err(|e| LinkerError::ParseError(path.to_string(), e))?;
+
+    if obj.kind() != object::ObjectKind::Relocatable {
         return Err(LinkerError::InvalidFileType(path.to_string()));
     }
 
@@ -52,12 +68,16 @@ pub fn load_object_file(path: &str) -> Result<ObjectFile, LinkerError> {
             defined: !sym.is_undefined(),
             global: sym.is_global(),
             file: path.to_string(),
+            strong: !sym.is_weak(),
         })
     }
 
     for section in obj.sections() {
         ret.sections.push(Section {
             name: section.name().unwrap().to_string(),
+
+            // FIXME: this is slow
+            data: section.data().unwrap().to_vec(),
         });
 
         for reloc in section.relocations() {

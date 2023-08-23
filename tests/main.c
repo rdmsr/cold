@@ -1,7 +1,3 @@
-int my_function(void);
-int undefined_func(void);
+__attribute__((weak)) int my_function(void);
 
-int main(void) {
-  undefined_func();
-  return my_function();
-}
+int main(void) { return my_function(); }

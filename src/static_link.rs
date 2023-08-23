@@ -1,50 +1,45 @@
 use crate::common;
+use crate::common::Context;
 use crate::error::LinkerError;
-use dashmap::DashMap;
-use object::write;
-use object::write::elf;
 use rayon::prelude::*;
-use std::fs::File;
-use std::io::BufWriter;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-pub fn statically_link_files(input_files: Vec<String>, output: &str) -> Result<(), LinkerError> {
-    let mut writer = {
-        let out_file = BufWriter::new(File::create(output).unwrap());
-        write::StreamingBuffer::new(out_file)
-    };
-
-    let mut _elf_writer = elf::Writer::new(object::Endianness::Little, true, &mut writer);
-
-    let symbols_map: DashMap<String, common::Symbol> = DashMap::new();
-    let undefined_symbols_num = Arc::new(AtomicUsize::new(0));
+pub fn statically_link_files(input_files: Vec<String>, _output: String) -> Result<(), LinkerError> {
+    let context = Arc::new(std::sync::RwLock::new(Context::default()));
 
     input_files.par_iter().try_for_each(|p| {
-        let file = common::load_object_file(p)?;
+        let file = common::load_object_file(p, &mut context.write().unwrap())?;
 
         file.symbols.par_iter().for_each(|sym| {
-            if !sym.defined {
-                undefined_symbols_num.fetch_add(1, Ordering::SeqCst);
-            } else if undefined_symbols_num.load(Ordering::SeqCst) != 0 {
-                undefined_symbols_num.fetch_add(1, Ordering::SeqCst);
-            }
-
             if sym.global {
+                let ctx = &context.write().unwrap();
                 let cloned_sym = sym.clone();
-                symbols_map.insert(cloned_sym.name.clone(), cloned_sym);
+
+                let existing_symbol = ctx.symbols.get(&sym.name);
+
+                if sym.defined {
+                    if let Some(existing_sym) = existing_symbol {
+                        // If there is already a defined symbol with the same name that is strong
+                        if existing_sym.strong && existing_sym.defined {
+                            log::error!("Multiple definitions of symbol `{}`", existing_sym.name);
+                        }
+                    }
+                }
+
+                ctx.symbols.insert(cloned_sym.name.clone(), cloned_sym);
             }
         });
+
+        for section in file.sections {
+            context.write().unwrap().sections.push(section);
+        }
 
         Ok(())
     })?;
 
-    if undefined_symbols_num.load(Ordering::SeqCst) > 0 {
-        for sym in symbols_map {
-            if !sym.1.defined {
-                return Err(LinkerError::UndefinedSymbol(sym.1.file, sym.0));
-            }
+    for sym in &context.read().unwrap().symbols {
+        if !sym.defined {
+            log::error!("Undefined symbol `{}`", sym.name);
         }
     }
 

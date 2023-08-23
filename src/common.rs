@@ -1,5 +1,5 @@
 use crate::error::LinkerError;
-use object::{Object, ObjectSection, ObjectSymbol};
+use object::{Object, ObjectKind, ObjectSection, ObjectSymbol};
 
 #[derive(Debug, Clone)]
 pub struct Symbol {
@@ -31,20 +31,14 @@ pub struct ObjectFile {
     pub sections: Vec<Section>,
 }
 
-pub fn load_object_file(path: &String) -> Result<ObjectFile, LinkerError> {
-    let file = match std::fs::File::open(path) {
-        Err(e) => return Err(LinkerError::IOError(path.to_string(), e)),
-        Ok(x) => x,
-    };
-
+pub fn load_object_file(path: &str) -> Result<ObjectFile, LinkerError> {
+    let file = std::fs::File::open(path).map_err(|e| LinkerError::IOError(path.to_string(), e))?;
     let mmap = unsafe { memmap2::Mmap::map(&file).unwrap() };
 
-    let obj = match object::File::parse(&*mmap) {
-        Ok(x) => x,
-        Err(e) => return Err(LinkerError::ParseError(path.to_string(), e)),
-    };
+    let obj = object::File::parse(mmap.as_ref())
+        .map_err(|e| LinkerError::ParseError(path.to_string(), e))?;
 
-    if obj.kind() != object::ObjectKind::Relocatable {
+    if obj.kind() != ObjectKind::Relocatable {
         return Err(LinkerError::InvalidFileType(path.to_string()));
     }
 
@@ -57,7 +51,7 @@ pub fn load_object_file(path: &String) -> Result<ObjectFile, LinkerError> {
             kind: sym.kind(),
             defined: !sym.is_undefined(),
             global: sym.is_global(),
-            file: path.clone(),
+            file: path.to_string(),
         })
     }
 

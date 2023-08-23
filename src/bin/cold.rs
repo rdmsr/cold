@@ -1,10 +1,8 @@
 use clap::Parser;
-use cold::error::*;
-use cold::static_link::*;
-use log::*;
-use simplelog::*;
+use cold::static_link::statically_link_files;
+use log::{info, LevelFilter};
+use simplelog::{ColorChoice, Config, TermLogger, TerminalMode};
 
-/// Simple program to greet a person
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
@@ -25,7 +23,7 @@ fn main() {
 
     let level_filter = match args.debug {
         false => LevelFilter::Error,
-        true => LevelFilter::Trace,
+        true => LevelFilter::Info,
     };
 
     TermLogger::init(
@@ -42,8 +40,8 @@ fn main() {
     );
 
     if args._static {
-        if let Err(e) = statically_link_files(args.files, args.output) {
-            handle_error(e)
+        if let Err(err) = statically_link_files(args.files, &args.output) {
+            err.report();
         }
     } else {
         todo!("Dynamic linking");

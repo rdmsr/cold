@@ -1,84 +1,68 @@
-use crate::common;
 use crate::common::Context;
+use crate::common::{self, ObjectFile};
 use crate::error::LinkerError;
 
-const EXE_BASE: u64 = 0x400000;
-
-const SECTIONS: &[&str] = &[".text", ".data"];
+const EXECUTABLE_BASE: u64 = 0x400000;
+const EXECUTABLE_SECTIONS: &[&str] = &[".text", ".data"];
 
 pub fn statically_link_files(input_files: Vec<String>, _output: String) -> Result<(), LinkerError> {
     let mut context = Context::default();
     let out_sections: dashmap::DashMap<String, common::Section> = Default::default();
 
-    // First,
-    for p in &input_files {
-        common::load_object_file(p, &mut context)?;
+    for path in &input_files {
+        let object = ObjectFile::new(path, &mut context)?;
+        context.object_files.push(object);
 
-        let file = context.files.last().unwrap();
+        let object = context.object_files.last().unwrap();
 
-        for sym in &file.symbols {
-            if sym.global {
-                let cloned_sym = sym.clone();
-
-                if sym.defined {
-                    if let Some(existing_sym) = context.global_symbols.get(&sym.name) {
-                        // If there is already a defined symbol with the same name that is strong
-                        if existing_sym.strong && existing_sym.defined {
-                            log::error!("Multiple definitions of symbol `{}`", existing_sym.name);
-                        }
-                    }
-
-                    context
-                        .global_symbols
-                        .insert(cloned_sym.name.clone(), cloned_sym);
+        for symbol in &object.symbols {
+            if symbol.global && symbol.defined {
+                if !symbol.is_unique_in(&context) {
+                    return Err(LinkerError::MultipleDefinitions(symbol.name.to_owned()));
                 }
+
+                let symbol = symbol.clone();
+                context.global_symbols.insert(symbol.name.clone(), symbol);
             }
         }
     }
 
-    let mut curr_address = EXE_BASE;
+    let mut curr_address = EXECUTABLE_BASE;
 
-    for section_name in SECTIONS {
-        for file in &mut context.files {
-            if let Some(section) = file
+    for &section_name in EXECUTABLE_SECTIONS {
+        for file in &mut context.object_files {
+            if let Some(mut section) = file
                 .sections
-                .clone()
-                .iter_mut()
-                .find(|section| section.name == *section_name)
+                .iter()
+                .find(|s| s.name == section_name)
+                .cloned()
             {
-                file.sections[section.index.0].address = curr_address;
+                file.sections[section.index].address = curr_address;
 
-                if let Some(mut out_section) = out_sections.get_mut(&section_name.to_string()) {
+                if let Some(mut out_section) = out_sections.get_mut(section_name) {
                     out_section.data.extend(&section.data);
                     curr_address += section.data.len() as u64;
                 } else {
-                    let mut sec_copy = section.clone();
-                    sec_copy.address = curr_address;
+                    section.address = curr_address;
 
-                    out_sections.insert(section_name.to_string(), sec_copy);
+                    out_sections.insert(section_name.to_owned(), section.clone());
                     curr_address += section.data.len() as u64;
+
+                    log::info!("{:x?}", section);
                 }
             }
         }
     }
 
-    for sec in out_sections {
-        log::info!("{:x?}", sec);
-    }
-
-    for sym in context.global_symbols {
-        if !sym.1.defined {
-            log::error!("Undefined symbol `{}`", sym.1.name);
+    for (name, symbol) in context.global_symbols {
+        if !symbol.defined {
+            log::error!("Undefined symbol `{}`", name);
         }
 
-        //log::info!("{:x?}", sym.1);
+        let object_file = &context.object_files[symbol.object_id];
+        let section = &object_file.sections[symbol.section_index.unwrap()];
 
-        log::info!(
-            "symbol {} at {:x}",
-            sym.1.name,
-            sym.1.address
-                + context.files[sym.1.object_id].sections[sym.1.sec_index.unwrap().0].address,
-        );
+        log::info!("Symbol {} at {:x}", name, symbol.address + section.address,);
     }
 
     Ok(())

@@ -8,6 +8,7 @@ pub enum LinkerError {
     ParseError(String, read::Error),
     IOError(String, io::Error),
     UndefinedSymbol(String, String),
+    MultipleDefinitions(String),
 }
 
 impl fmt::Display for LinkerError {
@@ -19,16 +20,13 @@ impl fmt::Display for LinkerError {
             LinkerError::ParseError(f, e) => {
                 write!(fmt, "Object file parsing error: {}: {}", f, e)
             }
-            LinkerError::IOError(f, e) => write!(fmt, "IO error: {f}: {e}"),
+            LinkerError::IOError(f, e) => write!(fmt, "IO error: {}: {}", f, e),
             LinkerError::UndefinedSymbol(f, name) => {
                 write!(fmt, "Undefined symbol `{}` referenced in {}", name, f)
             }
+            LinkerError::MultipleDefinitions(name) => {
+                write!(fmt, "Multiple definitions of symbol `{}`", name)
+            }
         }
-    }
-}
-
-impl LinkerError {
-    pub fn report(&self) {
-        eprintln!("\x1b[1;31merror:\x1b[0m {}", self)
     }
 }

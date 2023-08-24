@@ -1,12 +1,13 @@
-use crate::object::{Context, ObjectFile, Section};
 use crate::error::LinkerError;
+use crate::object::{Context, ObjectFile, Section};
+use dashmap::DashMap;
 
 const EXECUTABLE_BASE: u64 = 0x400000;
 const EXECUTABLE_SECTIONS: &[&str] = &[".text", ".data"];
 
 pub fn statically_link_files(input_files: Vec<String>, _output: String) -> Result<(), LinkerError> {
     let mut context = Context::default();
-    let out_sections: dashmap::DashMap<String, Section> = Default::default();
+    let out_sections: DashMap<String, Section> = DashMap::new();
 
     for path in &input_files {
         let object = ObjectFile::new(path, &mut context)?;
